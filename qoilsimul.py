@@ -125,24 +125,36 @@ class Element:
 
 class BS(Element):
     def __init__(self):
-        dofs = [a,b]
+        dof = ['path']
+        pathmodes = 2
         rule = {a: lambda a,b: co(*a)+co(*b),
                 b: lambda a,b: co(*a)-co(*b)}
-
-        Element.__init__(self,rule,dofs)
+        Element.__init__(self,rule,dof,pathmodes)
 
 class HWP(Element):
     def __init__(self,th):
-        dofs = [H,V]
+        dof = ['pol']
+        pathmodes = 1
+        s = (1/sp.sqrt(2))
         rule = {H: lambda H,V: sp.cos(2*th)*co(*H)+sp.sin(2*th)*co(*V),
                 V: lambda H,V: sp.sin(2*th)*co(*H)-sp.cos(2*th)*co(*V)}
-        Element.__init__(self,rule,dofs)
+        Element.__init__(self,rule,dof,pathmodes)
 
 class PBS(Element):
     def __init__(self):
-        dofs = [(a,H),(a,V),(b,H),(b,V)]
+        dof = ['path','pol']
+        pathmodes = 2
         rule = {(a,H): lambda aH,aV,bH,bV: co(*aH),
                 (a,V): lambda aH,aV,bH,bV: sp.I*co(*bV),
                 (b,H): lambda aH,aV,bH,bV: co(*bH),
                 (b,V): lambda aH,aV,bH,bV: sp.I*co(*aV)}
-        Element.__init__(self,rule,dofs)
+        Element.__init__(self,rule,dof,pathmodes)
+
+class QWP(Element):
+    def __init__(self,th):
+        dof = ['pol']
+        pathmodes = 1
+        s = (1/sp.sqrt(2))
+        rule = {H: lambda H,V: s*((1+sp.I*sp.cos(2*th))*co(*H)+sp.I*sp.sin(2*th)*co(*V)),
+                V: lambda H,V: s*((sp.I*sp.sin(2*th)*co(*H)+(1-sp.I*sp.cos(2*th))*co(*V)))}
+        Element.__init__(self,rule,dof,pathmodes)
