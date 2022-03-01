@@ -4,10 +4,10 @@ from string import ascii_lowercase
 from operator import mul
 from functools import reduce
 import random
-from itertools import product
+from itertools import product,chain
 
-def co(*args):
-    return sp.symbols('x',cls=sp.IndexedBase)[args]
+H,V = sp.symbols('H V', cls=sp.IndexedBase)
+p1,p2 = sp.symbols('p1 p2', cls=sp.IndexedBase)
 
 def co(*args):
     return sp.symbols('x',cls=sp.IndexedBase)[args]
@@ -21,11 +21,18 @@ class Experiment:
         self.totalSteps = 0
         print('Experiment initialised.')
 
+    def emptyMode(self):
+        m = sp.symbols(next(self._ltr),cls=sp.IndexedBase)
+        self.pathModes.append(m)
+        return m
+
+
     def addModes(self,*args):
         self.modes = [mode for mode in args]
 
     def addPhotons(self,*args):
         self.sources = [photon for photon in args]
+        self.generateState()
 
     def addElements(self,*args):
         self.timeline = {i:arg for i,arg in enumerate(args)}
@@ -35,7 +42,7 @@ class Experiment:
         letters = list(ascii_lowercase)
         totalPathModes = sum([photon.pathModes for photon in photons])
         self.pathModes = [sp.symbols(letter,cls=sp.IndexedBase) for letter in letters[:totalPathModes]]
-        ltr = iter(letters)
+        self._ltr = iter(letters)
         photonStates = []
         for photon in photons:
             modes = []
@@ -48,7 +55,7 @@ class Experiment:
             else:
                 state = photon.state
             for pathdof in range(photon.pathModes):
-                m = next(ltr)
+                m = next(self._ltr)
                 state = state.subs({'p{}'.format(pathdof+1):m},
                                    simultaneous=True)
                 modes.append(sp.symbols(m,cls=sp.IndexedBase))
@@ -83,10 +90,11 @@ class Element:
     def __init__(self,rule,dof,pathmodes):
         self.id = id(self)
         self.rule = rule
-        self.dof = {'path':None} | {k:v for k,v in self._ref.items() if k in dof}
+        self.dof = {'path':None}
+        self.dof = self.dof | {k:v for k,v in self._ref.items() if k in dof}
         self.pathmodes = pathmodes
-        self.o = np.array(range(pathmodes),dtype=object)
-        self._i = np.array(range(pathmodes),dtype=object)
+        self.o = np.array([None]*pathmodes,dtype=object)
+        self._i = np.array([None]*pathmodes,dtype=object)
 
     @property
     def i(self):
@@ -161,8 +169,9 @@ class BS(Element):
     def __init__(self):
         dof = ['path']
         pathmodes = 2
-        rule = {a: lambda a,b: co(*a)+co(*b),
-                b: lambda a,b: co(*a)-co(*b)}
+        rule = {p1: lambda a,b: co(*a)+co(*b),
+                p2: lambda a,b: co(*a)-co(*b)}
+        self.label = 'BS '
         Element.__init__(self,rule,dof,pathmodes)
 
 class HWP(Element):
@@ -172,16 +181,18 @@ class HWP(Element):
         s = (1/sp.sqrt(2))
         rule = {H: lambda H,V: sp.cos(2*th)*co(*H)+sp.sin(2*th)*co(*V),
                 V: lambda H,V: sp.sin(2*th)*co(*H)-sp.cos(2*th)*co(*V)}
+        self.label = 'HWP'
         Element.__init__(self,rule,dof,pathmodes)
 
 class PBS(Element):
     def __init__(self):
         dof = ['path','pol']
         pathmodes = 2
-        rule = {(a,H): lambda aH,aV,bH,bV: co(*aH),
-                (a,V): lambda aH,aV,bH,bV: sp.I*co(*bV),
-                (b,H): lambda aH,aV,bH,bV: co(*bH),
-                (b,V): lambda aH,aV,bH,bV: sp.I*co(*aV)}
+        rule = {(p1,H): lambda aH,aV,bH,bV: co(*aH),
+                (p1,V): lambda aH,aV,bH,bV: sp.I*co(*bV),
+                (p2,H): lambda aH,aV,bH,bV: co(*bH),
+                (p2,V): lambda aH,aV,bH,bV: sp.I*co(*aV)}
+        self.label = 'PBS'
         Element.__init__(self,rule,dof,pathmodes)
 
 class QWP(Element):
@@ -191,4 +202,5 @@ class QWP(Element):
         s = (1/sp.sqrt(2))
         rule = {H: lambda H,V: s*((1+sp.I*sp.cos(2*th))*co(*H)+sp.I*sp.sin(2*th)*co(*V)),
                 V: lambda H,V: s*((sp.I*sp.sin(2*th)*co(*H)+(1-sp.I*sp.cos(2*th))*co(*V)))}
+        self.label = 'QWP'
         Element.__init__(self,rule,dof,pathmodes)
