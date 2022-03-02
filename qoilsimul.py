@@ -131,6 +131,7 @@ class Experiment:
     def coincidence(self):
         self.detectors.coincidence(self.state)
         self.successProbability = self.detectors.coincidenceProb
+        self.postSelectedState = self.detectors.finalState
 
 class Photon:
     instances = []
@@ -156,6 +157,7 @@ class Detectors:
         self.numberOfDetectors = numberOfDetectors
 
     def coincidence(self,state):
+        projState = 0
         if not any(self.i):
             print('No detectors connected')
             return
@@ -163,14 +165,28 @@ class Detectors:
             prob = 0
             for arg in sp.preorder_traversal(state.expand()):
                 if arg.is_Mul:
+                    # Separate each element of the state in terms of its factors
                     amp,factors = sp.factor_list(arg)
                     idx = []
                     for f in factors:
-                        idx += f[0].indices
+                        symbAmp = 0
+                        if (sp.symbols('x') in f[0].atoms()):
+                            # If 'x' is in a factor it means that it's a creation
+                            # operator and then we take the indices. Else we just
+                            # treat it as a "symbolic amplitude" factor.
+                            idx += f[0].indices
+                        else:
+                            symbAmp += f[0]
                     if set(self.i).issubset(set(idx)):
-                        prob += amp**2
+                        # If the detector inputs are found in the expression then
+                        # that means it belongs to a coincidence. We then take
+                        # the associated amplitude and add the element to the
+                        # projected state.
+                        prob += (amp*symbAmp)**2
+                        projState += arg
             self.coincidenceProb = prob
-
+            self.finalState = projState
+            
 class Element:
     _ref = {'path':None,'pol':[H,V]}
     def __init__(self,rule,dof,pathmodes):
@@ -251,16 +267,6 @@ class Element:
         for key,func in self.rule.items():
             print(co(key),'--->',func(*args))
 
-class BS(Element):
-    def __init__(self):
-        dof = ['path']
-        pathmodes = 2
-        s = (1/sp.sqrt(2))
-        rule = {p1: lambda a,b: s*(co(*a)+co(*b)),
-                p2: lambda a,b: s*(co(*a)-co(*b))}
-        self.label = 'BS '
-        Element.__init__(self,rule,dof,pathmodes)
-
 class HWP(Element):
     def __init__(self,th):
         dof = ['pol']
@@ -268,6 +274,26 @@ class HWP(Element):
         rule = {H: lambda H,V: sp.cos(2*th)*co(*H)+sp.sin(2*th)*co(*V),
                 V: lambda H,V: sp.sin(2*th)*co(*H)-sp.cos(2*th)*co(*V)}
         self.label = 'HWP'
+        Element.__init__(self,rule,dof,pathmodes)
+
+class QWP(Element):
+    def __init__(self,th):
+        dof = ['pol']
+        pathmodes = 1
+        s = (1/sp.sqrt(2))
+        rule = {H: lambda H,V: s*((1+sp.I*sp.cos(2*th))*co(*H)+sp.I*sp.sin(2*th)*co(*V)),
+                V: lambda H,V: s*((sp.I*sp.sin(2*th)*co(*H)+(1-sp.I*sp.cos(2*th))*co(*V)))}
+        self.label = 'QWP'
+        Element.__init__(self,rule,dof,pathmodes)
+
+class BS(Element):
+    def __init__(self):
+        dof = ['path']
+        pathmodes = 2
+        s = (1/sp.sqrt(2))
+        rule = {p1: lambda a,b: s*(co(*a)+co(*b)),
+                p2: lambda a,b: s*(co(*a)-co(*b))}
+        self.label = 'BS'
         Element.__init__(self,rule,dof,pathmodes)
 
 class PBS(Element):
@@ -281,12 +307,44 @@ class PBS(Element):
         self.label = 'PBS'
         Element.__init__(self,rule,dof,pathmodes)
 
-class QWP(Element):
-    def __init__(self,th):
-        dof = ['pol']
+class PPBSH(Element):
+    def __init__(self,r = 1/2):
+        dof = ['path','pol']
+        pathmodes = 2
+        sr = sp.sqrt(r)
+        st = sp.sqrt(1-r)
+        rule = {(p1,H): lambda aH,aV,bH,bV: st*co(*aH)+sr*sp.I*co(*bH),
+                (p1,V): lambda aH,aV,bH,bV: co(*aV),
+                (p2,H): lambda aH,aV,bH,bV: sr*sp.I*co(*aH)+st*co(*bH),
+                (p2,V): lambda aH,aV,bH,bV: co(*bV)}
+        self.label = 'PPBSH'
+        Element.__init__(self,rule,dof,pathmodes)
+
+class PPBSV(Element):
+    def __init__(self,r=1/2):
+        dof = ['path','pol']
+        pathmodes = 2
+        sr = sp.sqrt(r)
+        st = sp.sqrt(1-r)
+        rule = {(p1,H): lambda aH,aV,bH,bV: co(*aH),
+                (p1,V): lambda aH,aV,bH,bV: st*co(*aV)+sr*sp.I*co(*bV),
+                (p2,H): lambda aH,aV,bH,bV: co(*bH),
+                (p2,V): lambda aH,aV,bH,bV: sr*sp.I*co(*aV)+st*co(*bV)}
+        self.label = 'PPBSV'
+        Element.__init__(self,rule,dof,pathmodes)
+
+class PhaseShifter(Element):
+    def __init__(self,theta):
+        dof = ['path']
         pathmodes = 1
-        s = (1/sp.sqrt(2))
-        rule = {H: lambda H,V: s*((1+sp.I*sp.cos(2*th))*co(*H)+sp.I*sp.sin(2*th)*co(*V)),
-                V: lambda H,V: s*((sp.I*sp.sin(2*th)*co(*H)+(1-sp.I*sp.cos(2*th))*co(*V)))}
-        self.label = 'QWP'
+        rule = {p1: lambda a: sp.exp(sp.I*theta)*co(*a)}
+        self.label = 'PSh'
+        Element.__init__(self,rule,dof,pathmodes)
+
+class Attenuator(Element):
+    def __init__(self,theta):
+        dof = ['path']
+        pathmodes = 1
+        rule = {p1: lambda a: theta*co(*a)}
+        self.label = 'Att'
         Element.__init__(self,rule,dof,pathmodes)
