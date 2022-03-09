@@ -84,13 +84,14 @@ class Experiment:
                 else:
                     st += step
                 for op in self.elements.values():
-                    st += step
                     if m in op.i:
-                        step = '---'
-                        st+= op.label.replace(' ','-')
+                        step = '-'*len(op.label)
+                        st+= op.label
                     else:
                         st += step
-                st += step
+                    step = '--'
+                    st += step
+                st += '-'
 
                 if m in self.detectors.i:
                     st += 'D'
@@ -128,7 +129,50 @@ class Experiment:
         print('Simulation done.')
         self.summary = resultsDict
 
+    def _calculateTermAmplitudes(self):
+        amplitudes = {}
+        for arg in sp.preorder_traversal(self.state.expand()):
+            if arg.is_Mul:
+                amp,factors = sp.factor_list(arg)
+                # Create boolean mask for creation operators in term
+                mask = [sp.Symbol('x') in i[0].free_symbols for i in factors]
+                terms = [f for f,m in zip(factors,mask) if m]
+                if not len(terms):
+                    # If no modes, pass
+                    continue
+                currArg = [item[0]**item[1] for item in terms]
+                currArg = reduce((lambda x, y: x * y),currArg)
+
+                # Symbolic amplitudes (e.g. cos(theta), 2k, etc.)
+                symbAmp = [f for f,m in zip(factors,mask) if not m]
+
+                # Mode labels (e.g. a, b, H, V, t1, etc.)
+                idx = [x for y in terms for x in y[0].indices]
+
+                termAmplitude = amp
+                for item in symbAmp:
+                    termAmplitude *= (item[0]**item[1])
+
+                if currArg in amplitudes.keys():
+                    amplitudes[currArg]['amp'] += termAmplitude
+                else:
+                    amplitudes[currArg] = {'amp':termAmplitude,
+                                          'idx':set(idx)}
+        self._stateAmplitudes = amplitudes
+
     def coincidence(self):
+        self._calculateTermAmplitudes()
+        coincidenceProb = 0
+        postSelectedState = 0
+        for term,values in self._stateAmplitudes.items():
+            if set(self.detectors.i).issubset(values['idx']):
+                coincidenceProb += values['amp']**2
+                postSelectedState += values['amp']*term
+
+        self.successProbability = coincidenceProb
+        self.postSelectedState = postSelectedState
+
+    def _coincidence(self):
         self.detectors.coincidence(self.state)
         self.successProbability = self.detectors.coincidenceProb
         self.postSelectedState = self.detectors.finalState
@@ -168,15 +212,15 @@ class Detectors:
                     # Separate each element of the state in terms of its factors
                     amp,factors = sp.factor_list(arg)
                     idx = []
+                    symbAmp = 1
                     for f in factors:
-                        symbAmp = 0
                         if (sp.symbols('x') in f[0].atoms()):
                             # If 'x' is in a factor it means that it's a creation
                             # operator and then we take the indices. Else we just
                             # treat it as a "symbolic amplitude" factor.
                             idx += f[0].indices
                         else:
-                            symbAmp += f[0]
+                            symbAmp *= f[0]**f[1]
                     if set(self.i).issubset(set(idx)):
                         # If the detector inputs are found in the expression then
                         # that means it belongs to a coincidence. We then take
@@ -186,7 +230,7 @@ class Detectors:
                         projState += arg
             self.coincidenceProb = prob
             self.finalState = projState
-            
+
 class Element:
     _ref = {'path':None,'pol':[H,V]}
     def __init__(self,rule,dof,pathmodes):
@@ -287,12 +331,13 @@ class QWP(Element):
         Element.__init__(self,rule,dof,pathmodes)
 
 class BS(Element):
-    def __init__(self):
+    def __init__(self,r=1/sp.Rational(2)):
         dof = ['path']
         pathmodes = 2
-        s = (1/sp.sqrt(2))
-        rule = {p1: lambda a,b: s*(co(*a)+co(*b)),
-                p2: lambda a,b: s*(co(*a)-co(*b))}
+        rs = sp.sqrt(r)
+        ts = sp.sqrt(1-r)
+        rule = {p1: lambda a,b: ts*co(*a)+rs*co(*b),
+                p2: lambda a,b: rs*co(*a)-ts*co(*b)}
         self.label = 'BS'
         Element.__init__(self,rule,dof,pathmodes)
 
@@ -308,7 +353,7 @@ class PBS(Element):
         Element.__init__(self,rule,dof,pathmodes)
 
 class PPBSH(Element):
-    def __init__(self,r = 1/2):
+    def __init__(self,r = 1/sp.Rational(2)):
         dof = ['path','pol']
         pathmodes = 2
         sr = sp.sqrt(r)
@@ -321,7 +366,7 @@ class PPBSH(Element):
         Element.__init__(self,rule,dof,pathmodes)
 
 class PPBSV(Element):
-    def __init__(self,r=1/2):
+    def __init__(self,r = 1/sp.Rational(2)):
         dof = ['path','pol']
         pathmodes = 2
         sr = sp.sqrt(r)
@@ -347,4 +392,12 @@ class Attenuator(Element):
         pathmodes = 1
         rule = {p1: lambda a: theta*co(*a)}
         self.label = 'Att'
+        Element.__init__(self,rule,dof,pathmodes)
+
+class Mirror(Element):
+    def __init__(self):
+        dof = ['pol']
+        pathmodes = 1
+        rule = {V: lambda V: -co(*V)}
+        self.label = 'M'
         Element.__init__(self,rule,dof,pathmodes)
