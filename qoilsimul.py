@@ -76,22 +76,23 @@ class Experiment:
         else:
             self.circuit = ''
             for m in self.pathModes:
-                step = '...'
+                symb = '.'
                 st = '{} : '.format(m)
                 if m in list(chain.from_iterable([p.o for p in self.sources])):
-                    step = '---'
+                    symb = '-'
                     st += 'p -'
                 else:
-                    st += step
+                    st += symb*3
                 for op in self.elements.values():
+                    step = len(op.label)
                     if m in op.i:
-                        step = '-'*len(op.label)
+                        symb = '-'
                         st+= op.label
                     else:
-                        st += step
-                    step = '--'
-                    st += step
-                st += '-'
+                        st += step*symb
+#                     step = '---'
+                    st += symb
+                st += '--'
 
                 if m in self.detectors.i:
                     st += 'D'
