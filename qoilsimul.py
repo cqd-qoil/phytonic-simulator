@@ -233,12 +233,11 @@ class Detectors:
             self.finalState = projState
 
 class Element:
-    _ref = {'path':None,'pol':[H,V]}
-    def __init__(self,rule,dof,pathmodes):
+    def __init__(self, rule, dof, pathmodes):
         self.id = id(self)
         self.rule = rule
         self.dof = {'path':None}
-        self.dof = self.dof | {k:v for k,v in self._ref.items() if k in dof}
+        self.dof.update(dof)
         self.pathmodes = pathmodes
         self.o = np.array([None]*pathmodes,dtype=object)
         self._i = np.array([None]*pathmodes,dtype=object)
@@ -314,7 +313,7 @@ class Element:
 
 class HWP(Element):
     def __init__(self,th):
-        dof = ['pol']
+        dof = {'pol':[H,V]}
         pathmodes = 1
         rule = {H: lambda H,V: sp.cos(2*th)*co(*H)+sp.sin(2*th)*co(*V),
                 V: lambda H,V: sp.sin(2*th)*co(*H)-sp.cos(2*th)*co(*V)}
@@ -323,7 +322,7 @@ class HWP(Element):
 
 class QWP(Element):
     def __init__(self,th):
-        dof = ['pol']
+        dof = {'pol':[H,V]}
         pathmodes = 1
         s = (1/sp.sqrt(2))
         rule = {H: lambda H,V: s*((1+sp.I*sp.cos(2*th))*co(*H)+sp.I*sp.sin(2*th)*co(*V)),
@@ -333,7 +332,7 @@ class QWP(Element):
 
 class BS(Element):
     def __init__(self,r=1/sp.Rational(2)):
-        dof = ['path']
+        dof = {'path':[p1,p2]}
         pathmodes = 2
         rs = sp.sqrt(r)
         ts = sp.sqrt(1-r)
@@ -344,7 +343,7 @@ class BS(Element):
 
 class PBS(Element):
     def __init__(self):
-        dof = ['path','pol']
+        dof = {'path':[p1,p2],'pol':[H,V]}
         pathmodes = 2
         rule = {(p1,H): lambda aH,aV,bH,bV: co(*aH),
                 (p1,V): lambda aH,aV,bH,bV: sp.I*co(*bV),
@@ -353,9 +352,23 @@ class PBS(Element):
         self.label = 'PBS'
         Element.__init__(self,rule,dof,pathmodes)
 
+class UBS(Element):
+    """ Universal beam splitter
+    
+    """
+    def __init__(self, user_modes):
+        dof = {'user':user_modes}
+        pathmodes = 2
+        rule = {(p1,user_modes[0]): lambda at1,at2,bt1,bt2: co(*at1),
+                (p1,user_modes[1]): lambda at1,at2,bt1,bt2: sp.I*co(*bt2),
+                (p2,user_modes[0]): lambda at1,at2,bt1,bt2: co(*bt1),
+                (p2,user_modes[1]): lambda at1,at2,bt1,bt2: sp.I*co(*at2)}
+        self.label = 'UBS'
+        Element.__init__(self, rule, dof, pathmodes)
+
 class PPBSH(Element):
     def __init__(self,r = 1/sp.Rational(2)):
-        dof = ['path','pol']
+        dof = {'path':[p1,p2],'pol':[H,V]}
         pathmodes = 2
         sr = sp.sqrt(r)
         st = sp.sqrt(1-r)
@@ -368,7 +381,7 @@ class PPBSH(Element):
 
 class PPBSV(Element):
     def __init__(self,r = 1/sp.Rational(2)):
-        dof = ['path','pol']
+        dof = {'path':[p1,p2],'pol':[H,V]}
         pathmodes = 2
         sr = sp.sqrt(r)
         st = sp.sqrt(1-r)
@@ -381,7 +394,7 @@ class PPBSV(Element):
 
 class PhaseShifter(Element):
     def __init__(self,theta):
-        dof = ['path']
+        dof = {'path':p1}
         pathmodes = 1
         rule = {p1: lambda a: sp.exp(sp.I*theta)*co(*a)}
         self.label = 'PSh'
@@ -389,7 +402,7 @@ class PhaseShifter(Element):
 
 class Attenuator(Element):
     def __init__(self,theta):
-        dof = ['path']
+        dof = {'path':p1}
         pathmodes = 1
         rule = {p1: lambda a: theta*co(*a)}
         self.label = 'Att'
@@ -397,7 +410,7 @@ class Attenuator(Element):
 
 class Mirror(Element):
     def __init__(self):
-        dof = ['pol']
+        dof = {'pol':[H,V]}
         pathmodes = 1
         rule = {V: lambda V: -co(*V)}
         self.label = 'M'
