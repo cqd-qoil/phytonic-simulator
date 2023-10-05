@@ -289,7 +289,6 @@ class Element:
         self.pathmodes = pathmodes
         self.o = np.array([None]*pathmodes,dtype=object)
         self._i = np.array([None]*pathmodes,dtype=object)
-        self.test = 0
 
     @property
     def i(self):
@@ -358,14 +357,14 @@ class Element:
     def prettify(self):
         args = [(item,) for item in self.rule.keys()]
         for key,func in self.rule.items():
-            print(co(key),'--->',func(*args))
+            print(co(key),'--->',func(args))
 
 class HWP(Element):
     def __init__(self,th):
         dof = {'pol':[H,V]}
-        pathmodes = 1
-        rule = {H: lambda H,V: sp.cos(2*th)*co(*H)+sp.sin(2*th)*co(*V),
-                V: lambda H,V: sp.sin(2*th)*co(*H)-sp.cos(2*th)*co(*V)}
+        pathmodes = 1                # modes = [H,V]
+        rule = {H: lambda modes: sp.cos(2*th)*co(*modes[0])+sp.sin(2*th)*co(*modes[1]),
+                V: lambda modesmodes: sp.sin(2*th)*co(*modes[0])-sp.cos(2*th)*co(*modes[1])}
         self.label = 'HWP'
         Element.__init__(self,rule,dof,pathmodes)
 
@@ -373,9 +372,9 @@ class QWP(Element):
     def __init__(self,th):
         dof = {'pol':[H,V]}
         pathmodes = 1
-        s = (1/sp.sqrt(2))
-        rule = {H: lambda H,V: s*((1+sp.I*sp.cos(2*th))*co(*H)+sp.I*sp.sin(2*th)*co(*V)),
-                V: lambda H,V: s*((sp.I*sp.sin(2*th)*co(*H)+(1-sp.I*sp.cos(2*th))*co(*V)))}
+        s = (1/sp.sqrt(2))           # modes = [H,V]
+        rule = {H: lambda modes: s*((1+sp.I*sp.cos(2*th))*co(*modes[0])+sp.I*sp.sin(2*th)*co(*modes[1])),
+                V: lambda modes: s*((sp.I*sp.sin(2*th)*co(*modes[0])+(1-sp.I*sp.cos(2*th))*co(*modes[1])))}
         self.label = 'QWP'
         Element.__init__(self,rule,dof,pathmodes)
 
@@ -385,8 +384,8 @@ class BS(Element):
         pathmodes = 2
         rs = sp.sqrt(r)
         ts = sp.sqrt(1-r)
-        rule = {p1: lambda a,b: ts*co(*a)+rs*co(*b),
-                p2: lambda a,b: rs*co(*a)-ts*co(*b)}
+        rule = {p1: lambda modes: ts*co(*modes[0])+rs*co(*modes[1]), # modes = [a,b]
+                p2: lambda modes: rs*co(*modes[0])-ts*co(*modes[1])} # modes = [a,b]
         self.label = 'BS'
         Element.__init__(self,rule,dof,pathmodes)
 
@@ -394,10 +393,10 @@ class PBS(Element):
     def __init__(self):
         dof = {'pol':[H,V]}
         pathmodes = 2
-        rule = {(p1,H): lambda aH,aV,bH,bV: co(*aH),
-                (p1,V): lambda aH,aV,bH,bV: sp.I*co(*bV),
-                (p2,H): lambda aH,aV,bH,bV: co(*bH),
-                (p2,V): lambda aH,aV,bH,bV: sp.I*co(*aV)}
+        rule = {(p1,H): lambda modes: co(*modes[0]),      # modes = [aH,aV,bH,bV]
+                (p1,V): lambda modes: sp.I*co(*modes[3]),
+                (p2,H): lambda modes: co(*modes[2]),
+                (p2,V): lambda modes: sp.I*co(*modes[1])}
         self.label = 'PBS'
         Element.__init__(self,rule,dof,pathmodes)
 
@@ -407,10 +406,10 @@ class UBS(Element):
     def __init__(self, user_modes, label="UBS", dof_label='user'):
         dof = {dof_label:user_modes}
         pathmodes = 2
-        rule = {(p1,user_modes[0]): lambda at1,at2,bt1,bt2: co(*at1),
-                (p1,user_modes[1]): lambda at1,at2,bt1,bt2: sp.I*co(*bt2),
-                (p2,user_modes[0]): lambda at1,at2,bt1,bt2: co(*bt1),
-                (p2,user_modes[1]): lambda at1,at2,bt1,bt2: sp.I*co(*at2)}
+        rule = {(p1,user_modes[0]): lambda modes: co(*modes[0]),      # modes = [at1,at2,bt1,bt2]
+                (p1,user_modes[1]): lambda modes: sp.I*co(*modes[3]),
+                (p2,user_modes[0]): lambda modes: co(*modes[2]),
+                (p2,user_modes[1]): lambda modes: sp.I*co(*modes[1])}
         self.label = label
         Element.__init__(self, rule, dof, pathmodes)
 
@@ -420,10 +419,10 @@ class PPBSH(Element):
         pathmodes = 2
         sr = sp.sqrt(r)
         st = sp.sqrt(1-r)
-        rule = {(p1,H): lambda aH,aV,bH,bV: st*co(*aH)+sr*sp.I*co(*bH),
-                (p1,V): lambda aH,aV,bH,bV: co(*aV),
-                (p2,H): lambda aH,aV,bH,bV: sr*sp.I*co(*aH)+st*co(*bH),
-                (p2,V): lambda aH,aV,bH,bV: co(*bV)}
+        rule = {(p1,H): lambda modes: st*co(*modes[0])+sr*sp.I*co(*modes[2]),   # modes = [aH,aV,bH,bV]
+                (p1,V): lambda modes: co(*modes[1]),
+                (p2,H): lambda modes: sr*sp.I*co(*modes[0])+st*co(*modes[2]),
+                (p2,V): lambda modes: co(*modes[3])}
         self.label = 'PPBSH'
         Element.__init__(self,rule,dof,pathmodes)
 
@@ -433,18 +432,42 @@ class PPBSV(Element):
         pathmodes = 2
         sr = sp.sqrt(r)
         st = sp.sqrt(1-r)
-        rule = {(p1,H): lambda aH,aV,bH,bV: co(*aH),
-                (p1,V): lambda aH,aV,bH,bV: st*co(*aV)+sr*sp.I*co(*bV),
-                (p2,H): lambda aH,aV,bH,bV: co(*bH),
-                (p2,V): lambda aH,aV,bH,bV: sr*sp.I*co(*aV)+st*co(*bV)}
+        rule = {(p1,H): lambda modes: co(*modes[0]),                            # modes = [aH,aV,bH,bV]
+                (p1,V): lambda modes: st*co(*modes[1])+sr*sp.I*co(*modes[3]),
+                (p2,H): lambda modes: co(*modes[2]),
+                (p2,V): lambda modes: sr*sp.I*co(*modes[1])+st*co(*modes[3])}
         self.label = 'PPBSV'
+        Element.__init__(self,rule,dof,pathmodes)
+
+class BD_full(Element):
+    def __init__(self, pathmodes=1, walking_pol=H):
+        dof = {'path':None, 'pol':[H, V]}
+        # Since a single BD can be used for many different paths (and it can always "increase" the total number of path modes), it needs some special consideration.
+        paths = sp.symbols('p1:20', cls_=sp.IndexedBase)[:pathmodes+1]
+        pols = [H, V]
+        total_dofs = list(product(paths, pols))
+        rule = dict()
+        for j, jdof in enumerate(total_dofs):
+            # modes = [aH,aV, bH,bV, cH,cV, ...] depends on the number of path modes needed
+            # The last input will always be empty, but we still need to define a rule for both polarisations
+            # for consistency purposes. Hence why I check for j < total_modes-2.
+            if j < len(total_dofs)-2 and jdof[1] == walking_pol:
+                # This is the rule for the polarisation that gets displaced.
+                # aH -> bH -> cH, etc. (if H walks off)
+                func = lambda modes: co(*modes[j+2])
+                r = {jdof: func}
+            else:
+                func = lambda modes: co(*modes[j])
+                r = {jdof: func}
+            rule = {**rule, **r}
+        self.label = 'BD'
         Element.__init__(self,rule,dof,pathmodes)
 
 class PhaseShifter(Element):
     def __init__(self,theta):
         dof = {'path':None}
         pathmodes = 1
-        rule = {p1: lambda a: sp.exp(sp.I*theta)*co(*a)}
+        rule = {p1: lambda mode: sp.exp(sp.I*theta)*co(*mode)} # mode = a (not an array? need to double check)
         self.label = 'PSh'
         Element.__init__(self,rule,dof,pathmodes)
 
@@ -452,7 +475,7 @@ class Attenuator(Element):
     def __init__(self,theta):
         dof = {'path':None}
         pathmodes = 1
-        rule = {p1: lambda a: theta*co(*a)}
+        rule = {p1: lambda mode: theta*co(*mode)} # same as phase shifter
         self.label = 'Att'
         Element.__init__(self,rule,dof,pathmodes)
 
@@ -460,16 +483,13 @@ class Mirror(Element):
     def __init__(self):
         dof = {'pol':[H,V]}
         pathmodes = 1
-        rule = {V: lambda V: -co(*V)}
+        rule = {V: lambda mode: -co(*mode)} # same as phase shifter
         self.label = 'M'
         Element.__init__(self,rule,dof,pathmodes)
 
 class MZI(Element):
     """
     Mach-Zehnder Interferometer (MZI) class.
-
-    The MZI class represents a Mach-Zehnder Interferometer optical element. It is a subclass of the Element class.
-
     Parameters:
         theta (list of reals): A list of two real numbers representing the phase angles of the MZI.
 
@@ -497,8 +517,8 @@ class MZI(Element):
         dof = {'path':None}
         pathmodes = 2
         phase_1 = sp.exp(sp.I*theta[0])
-        phase_2 = sp.exp(sp.I*theta[1])
-        rule = {p1: lambda a,b: co(*a)*(phase_1/2)*(phase_2+1)+co(*b)*(phase_1/2)*(phase_2-1),
-                p2: lambda a,b: co(*a)*(1-phase_2)/2+co(*b)*(1+phase_2)/2}
+        phase_2 = sp.exp(sp.I*theta[1])   # modes = [a,b]
+        rule = {p1: lambda modes: co(*modes[0])*(phase_1/2)*(phase_2+1)+co(*modes[1])*(phase_1/2)*(phase_2-1),
+                p2: lambda modes: co(*modes[0])*(1-phase_2)/2+co(*modes[1])*(1+phase_2)/2}
         self.label = 'MZI'
         Element.__init__(self,rule,dof,pathmodes)
