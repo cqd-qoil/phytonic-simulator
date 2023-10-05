@@ -305,8 +305,8 @@ class Element:
     def replaceTupleVal(self,tup,ix,val):
         lst = list(tup)
         if hasattr(ix,'__iter__'):
-            for i in ix:
-                lst[i] = val[i]
+            for i,j in zip(ix, range(len(val))):
+                lst[i] = val[j]
         else:
             lst[ix] = val
         return tuple(lst)
@@ -341,7 +341,7 @@ class Element:
                         break
                 if flag:
                     idx, loc = self.genIdx(self.rule.keys(),arg.indices)
-                    unitary[arg] = self.rule[loc](*idx.values())
+                    unitary[arg] = self.rule[loc](list(idx.values()))
         self.u = unitary
 
     def updateRules(self,newKeys=None,verbose=False):
@@ -364,7 +364,7 @@ class HWP(Element):
         dof = {'pol':[H,V]}
         pathmodes = 1                # modes = [H,V]
         rule = {H: lambda modes: sp.cos(2*th)*co(*modes[0])+sp.sin(2*th)*co(*modes[1]),
-                V: lambda modesmodes: sp.sin(2*th)*co(*modes[0])-sp.cos(2*th)*co(*modes[1])}
+                V: lambda modes: sp.sin(2*th)*co(*modes[0])-sp.cos(2*th)*co(*modes[1])}
         self.label = 'HWP'
         Element.__init__(self,rule,dof,pathmodes)
 
@@ -442,22 +442,25 @@ class PPBSV(Element):
 class BD_full(Element):
     def __init__(self, pathmodes=1, walking_pol=H):
         dof = {'path':None, 'pol':[H, V]}
-        # Since a single BD can be used for many different paths (and it can always "increase" the total number of path modes), it needs some special consideration.
+        # Since a single BD can be used for many different paths (and it can always "increase" the total number
+        # of path modes), it needs some special consideration.
         paths = sp.symbols('p1:20', cls_=sp.IndexedBase)[:pathmodes+1]
         pols = [H, V]
-        total_dofs = list(product(paths, pols))
+        modes = list(product(paths, pols)) # [aH,aV,bH,bV,cH,cV, ...] depends on the number of input paths
         rule = dict()
-        for j, jdof in enumerate(total_dofs):
-            # modes = [aH,aV, bH,bV, cH,cV, ...] depends on the number of path modes needed
+        for j, jdof in enumerate(modes):
             # The last input will always be empty, but we still need to define a rule for both polarisations
-            # for consistency purposes. Hence why I check for j < total_modes-2.
-            if j < len(total_dofs)-2 and jdof[1] == walking_pol:
+            # for consistency purposes. Hence why I check for j < total_modes-2 below.
+            if j < len(modes)-2 and jdof[1] == walking_pol:
                 # This is the rule for the polarisation that gets displaced.
                 # aH -> bH -> cH, etc. (if H walks off)
-                func = lambda modes: co(*modes[j+2])
+                # Setting j=j makes sure that the function is always called correctly, instead of depending on the
+                # global value of j (figuring this out was a headscratcher...)
+                func = lambda modes, j=j: co(*modes[j+2])
                 r = {jdof: func}
             else:
-                func = lambda modes: co(*modes[j])
+                # Not-walking polarisation goes trough, same as both polarisation in last input mode (should be empty)
+                func = lambda modes, j=j: co(*modes[j])
                 r = {jdof: func}
             rule = {**rule, **r}
         self.label = 'BD'
@@ -467,7 +470,7 @@ class PhaseShifter(Element):
     def __init__(self,theta):
         dof = {'path':None}
         pathmodes = 1
-        rule = {p1: lambda mode: sp.exp(sp.I*theta)*co(*mode)} # mode = a (not an array? need to double check)
+        rule = {p1: lambda modes: sp.exp(sp.I*theta)*co(*modes[0])} # mode = a (not an array? need to double check)
         self.label = 'PSh'
         Element.__init__(self,rule,dof,pathmodes)
 
@@ -475,7 +478,7 @@ class Attenuator(Element):
     def __init__(self,theta):
         dof = {'path':None}
         pathmodes = 1
-        rule = {p1: lambda mode: theta*co(*mode)} # same as phase shifter
+        rule = {p1: lambda modes: theta*co(*modes[0])} # same as phase shifter
         self.label = 'Att'
         Element.__init__(self,rule,dof,pathmodes)
 
@@ -483,7 +486,7 @@ class Mirror(Element):
     def __init__(self):
         dof = {'pol':[H,V]}
         pathmodes = 1
-        rule = {V: lambda mode: -co(*mode)} # same as phase shifter
+        rule = {V: lambda modes: -co(*modes[0])} # same as phase shifter
         self.label = 'M'
         Element.__init__(self,rule,dof,pathmodes)
 
