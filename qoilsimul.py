@@ -171,7 +171,10 @@ class Experiment:
         postSelectedState = 0
         for term,values in self._stateAmplitudes.items():
             if set(self.detectors.i).issubset(values['idx']):
-                coincidenceProb += values['amp']**2
+                # probability = real**2 + imag**2, otherwise sympy gets weird with phases
+                probability = sum([item**2 for item in values['amp'].as_real_imag()])
+                coincidenceProb += probability
+                # coincidenceProb += values['amp']*(values['amp'].conjugate())
                 postSelectedState += values['amp']*term
 
         self.successProbability = coincidenceProb
@@ -303,6 +306,21 @@ class Element:
         self.updateRules(newKeys=keys)
 
     def replaceTupleVal(self,tup,ix,val):
+        """
+        Replace values in a tuple at specified indices with new values. Used to determine the rules of an optical element that handles some particular degrees of freedom without affecting others.
+        Args:
+        - tup (tuple): The original tuple.
+        - ix (int or iterable of ints): The index or indices at which to replace values.
+        - val (any or iterable): The new value(s) to replace at the specified indices.
+
+        Returns:
+        tuple: A new tuple with values replaced at the specified indices.
+
+        Example:
+        >>> t = [path1,H,time1,freq1,oam1]
+        >>> replaceTupleVal(t, [0,2], [path2,time4])
+        [path2,H,time4,freq1,oam1]
+        """
         lst = list(tup)
         if hasattr(ix,'__iter__'):
             for i,j in zip(ix, range(len(val))):
@@ -312,6 +330,16 @@ class Element:
         return tuple(lst)
 
     def genIdx(self,modes,indices):
+        """
+        Generate new indices for specified modes in a list of indices.
+        Args:
+        - modes (iterable): Modes for which new indices will be generated.
+        - indices (list): List of original indices.
+        Returns:
+        tuple: A tuple containing two elements:
+        1. A dictionary where keys are the modes and values are the new indices.
+        2. The original mode(s) that were found in the 'indices' list.
+        """
         newIdx = {}
         _id = None
         for m in modes:
@@ -360,44 +388,44 @@ class Element:
             print(co(key),'--->',func(args))
 
 class HWP(Element):
-    def __init__(self,th):
+    def __init__(self,theta,label='HWP'):
         dof = {'pol':[H,V]}
         pathmodes = 1                # modes = [H,V]
-        rule = {H: lambda modes: sp.cos(2*th)*co(*modes[0])+sp.sin(2*th)*co(*modes[1]),
-                V: lambda modes: sp.sin(2*th)*co(*modes[0])-sp.cos(2*th)*co(*modes[1])}
-        self.label = 'HWP'
+        rule = {H: lambda modes: sp.cos(2*theta)*co(*modes[0])+sp.sin(2*theta)*co(*modes[1]),
+                V: lambda modes: sp.sin(2*theta)*co(*modes[0])-sp.cos(2*theta)*co(*modes[1])}
+        self.label = label
         Element.__init__(self,rule,dof,pathmodes)
 
 class QWP(Element):
-    def __init__(self,th):
+    def __init__(self,theta,label='QWP'):
         dof = {'pol':[H,V]}
         pathmodes = 1
         s = (1/sp.sqrt(2))           # modes = [H,V]
-        rule = {H: lambda modes: s*((1+sp.I*sp.cos(2*th))*co(*modes[0])+sp.I*sp.sin(2*th)*co(*modes[1])),
-                V: lambda modes: s*((sp.I*sp.sin(2*th)*co(*modes[0])+(1-sp.I*sp.cos(2*th))*co(*modes[1])))}
-        self.label = 'QWP'
+        rule = {H: lambda modes: s*((1+sp.I*sp.cos(2*theta))*co(*modes[0])+sp.I*sp.sin(2*theta)*co(*modes[1])),
+                V: lambda modes: s*((sp.I*sp.sin(2*theta)*co(*modes[0])+(1-sp.I*sp.cos(2*theta))*co(*modes[1])))}
+        self.label = label
         Element.__init__(self,rule,dof,pathmodes)
 
 class BS(Element):
-    def __init__(self,r=1/sp.Rational(2)):
+    def __init__(self,r=1/sp.Rational(2),label='BS'):
         dof = {'path':None}
         pathmodes = 2
         rs = sp.sqrt(r)
         ts = sp.sqrt(1-r)
         rule = {p1: lambda modes: ts*co(*modes[0])+rs*co(*modes[1]), # modes = [a,b]
                 p2: lambda modes: rs*co(*modes[0])-ts*co(*modes[1])} # modes = [a,b]
-        self.label = 'BS'
+        self.label = label
         Element.__init__(self,rule,dof,pathmodes)
 
 class PBS(Element):
-    def __init__(self):
+    def __init__(self,label='PBS'):
         dof = {'pol':[H,V]}
         pathmodes = 2
         rule = {(p1,H): lambda modes: co(*modes[0]),      # modes = [aH,aV,bH,bV]
                 (p1,V): lambda modes: sp.I*co(*modes[3]),
                 (p2,H): lambda modes: co(*modes[2]),
                 (p2,V): lambda modes: sp.I*co(*modes[1])}
-        self.label = 'PBS'
+        self.label = label
         Element.__init__(self,rule,dof,pathmodes)
 
 class UBS(Element):
@@ -414,7 +442,7 @@ class UBS(Element):
         Element.__init__(self, rule, dof, pathmodes)
 
 class PPBSH(Element):
-    def __init__(self,r = 1/sp.Rational(2)):
+    def __init__(self,r = 1/sp.Rational(2),label='PPBSH'):
         dof = {'pol':[H,V]}
         pathmodes = 2
         sr = sp.sqrt(r)
@@ -423,11 +451,11 @@ class PPBSH(Element):
                 (p1,V): lambda modes: co(*modes[1]),
                 (p2,H): lambda modes: sr*sp.I*co(*modes[0])+st*co(*modes[2]),
                 (p2,V): lambda modes: co(*modes[3])}
-        self.label = 'PPBSH'
+        self.label = label
         Element.__init__(self,rule,dof,pathmodes)
 
 class PPBSV(Element):
-    def __init__(self,r = 1/sp.Rational(2)):
+    def __init__(self,r = 1/sp.Rational(2),label='PPBSV'):
         dof = {'pol':[H,V]}
         pathmodes = 2
         sr = sp.sqrt(r)
@@ -436,14 +464,13 @@ class PPBSV(Element):
                 (p1,V): lambda modes: st*co(*modes[1])+sr*sp.I*co(*modes[3]),
                 (p2,H): lambda modes: co(*modes[2]),
                 (p2,V): lambda modes: sr*sp.I*co(*modes[1])+st*co(*modes[3])}
-        self.label = 'PPBSV'
+        self.label = label
         Element.__init__(self,rule,dof,pathmodes)
 
 class BD_full(Element):
-    def __init__(self, pathmodes=1, walking_pol=H):
+    def __init__(self, pathmodes=1, walking_pol=H,label='BD'):
         dof = {'path':None, 'pol':[H, V]}
-        # Since a single BD can be used for many different paths (and it can always "increase" the total number
-        # of path modes), it needs some special consideration.
+        # Since a single BD can be used for many different paths (and it can always "increase" the total number of path modes), it needs some special consideration.
         paths = sp.symbols('p1:20', cls_=sp.IndexedBase)[:pathmodes+1]
         pols = [H, V]
         modes = list(product(paths, pols)) # [aH,aV,bH,bV,cH,cV, ...] depends on the number of input paths
@@ -463,31 +490,31 @@ class BD_full(Element):
                 func = lambda modes, j=j: co(*modes[j])
                 r = {jdof: func}
             rule = {**rule, **r}
-        self.label = 'BD'
+        self.label = label
         Element.__init__(self,rule,dof,pathmodes)
 
 class PhaseShifter(Element):
-    def __init__(self,theta):
+    def __init__(self,theta,label='PSh'):
         dof = {'path':None}
         pathmodes = 1
-        rule = {p1: lambda modes: sp.exp(sp.I*theta)*co(*modes[0])} # mode = a (not an array? need to double check)
-        self.label = 'PSh'
+        rule = {p1: lambda modes: sp.exp(sp.I*theta)*co(*modes[0])} # mode = a
+        self.label = label
         Element.__init__(self,rule,dof,pathmodes)
 
 class Attenuator(Element):
-    def __init__(self,theta):
+    def __init__(self,theta,label='Att'):
         dof = {'path':None}
         pathmodes = 1
         rule = {p1: lambda modes: theta*co(*modes[0])} # same as phase shifter
-        self.label = 'Att'
+        self.label = label
         Element.__init__(self,rule,dof,pathmodes)
 
 class Mirror(Element):
-    def __init__(self):
+    def __init__(self,label='M'):
         dof = {'pol':[H,V]}
         pathmodes = 1
         rule = {V: lambda modes: -co(*modes[0])} # same as phase shifter
-        self.label = 'M'
+        self.label = label
         Element.__init__(self,rule,dof,pathmodes)
 
 class MZI(Element):
@@ -495,33 +522,13 @@ class MZI(Element):
     Mach-Zehnder Interferometer (MZI) class.
     Parameters:
         theta (list of reals): A list of two real numbers representing the phase angles of the MZI.
-
-    Attributes:
-        label (str): The label assigned to this MZI element.
-        rule (dict): A dictionary defining the rules for the MZI element.
-                     It contains two lambda functions representing the behavior of the two paths in the MZI.
-        dof (dict): A dictionary representing the degrees of freedom associated with the MZI.
-                    In this case, it contains a single entry 'path' with a value of None.
-        pathmodes (int): An integer representing the number of paths/modes in the MZI.
-
-    Example:
-        # Creating an instance of the MZI class
-        >>> theta = [0.5, 1.2j]
-        >>> mzi_element = MZI(theta)
-
-    In this example, a Mach-Zehnder Interferometer element is created with phase angles theta = [0.5, 1.2].
-    The MZI element can be used to perform interference-based optical operations.
-
-    Note:
-        - 'p1' and 'p2' refer to path_1 and path_2 variables, respectively, used in the lambda functions defined within the 'rule' dictionary. The lambda functions represent the behavior of the two paths in the Mach-Zehnder Interferometer (MZI).
-        - The 'co' function represents the bosonic creation operator function used in the lambda functions within the 'rule' dictionary. The 'co' function is defined elsewhere.
     """
-    def __init__(self,theta):
+    def __init__(self,theta,label ='MZI'):
         dof = {'path':None}
         pathmodes = 2
         phase_1 = sp.exp(sp.I*theta[0])
         phase_2 = sp.exp(sp.I*theta[1])   # modes = [a,b]
         rule = {p1: lambda modes: co(*modes[0])*(phase_1/2)*(phase_2+1)+co(*modes[1])*(phase_1/2)*(phase_2-1),
                 p2: lambda modes: co(*modes[0])*(1-phase_2)/2+co(*modes[1])*(1+phase_2)/2}
-        self.label = 'MZI'
+        self.label = label
         Element.__init__(self,rule,dof,pathmodes)
