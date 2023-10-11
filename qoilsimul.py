@@ -136,51 +136,80 @@ class Experiment:
 
     def _calculateTermAmplitudes(self):
         amplitudes = {}
-        for arg in sp.preorder_traversal(self.state.expand()):
-            if arg.is_Mul:
-                amp,factors = sp.factor_list(arg)
-                # Create boolean mask for creation operators in term
-                mask = [sp.Symbol('x') in i[0].free_symbols for i in factors]
-                terms = [f for f,m in zip(factors,mask) if m]
-                if not len(terms):
-                    # If no modes, pass
-                    continue
-                currArg = [item[0]**item[1] for item in terms]
-                currArg = reduce((lambda x, y: x * y),currArg)
+        # Iterate over each expression in the state
+        for arg in self.state.expand().as_ordered_terms():
+            # amp: numerical amplitude
+            # factors: list of symbolic terms (and their exponent coefficient)
+            amp, factors = sp.factor_list(arg)
+            # Create boolean mask for creation operators in term, i.e.,
+            # check all symbolic elements and check for 'x' (reserved for creation ops.).
+            # E.g.: mask for [(c, 1), (x[a,H],2), (x[b,V],2)] is [False,True,True]
+            mask = [sp.Symbol('x') in i[0].free_symbols for i in factors]
+            # Filter out symbolic terms that are non-creation ops., and move on to next
+            # expression if there's no creation operators (e.g. if there's somehow a constant)
+            terms = [f for f,m in zip(factors,mask) if m]
+            if not len(terms):
+                # If no creation ops.
+                continue
+            # Exponentiate each creation op. by its coefficient and multiply together in a single
+            # expression, without amplitudes (symbolic or numeric). I.e., α(x[a,H]**2*x[b,V])/2
+            # yields x[a,H]**2*x[b,V] as currArg.
+            currArg = [item[0]**item[1] for item in terms]
+            currArg = reduce((lambda x, y: x * y),currArg)
 
-                # Symbolic amplitudes (e.g. cos(theta), 2k, etc.)
-                symbAmp = [f for f,m in zip(factors,mask) if not m]
+            # Symbolic amplitudes (e.g. cos(theta), 2k, etc.). In other words, check all symbolic
+            # terms in the expression and filters out the creation operators.
+            # Uses same mask as before, but inverted.
+            # So for [(c, 1), (x[a,H],2), (x[b,V],2)] its effectively [True,False,False]).
+            symbAmp = [f for f,m in zip(factors,mask) if not m]
+            # Bosonic renormalisation constant for the same mode: x[a]**n_a|vac> = √(n_a!)|n>_a
+            norm = np.prod([sp.factorial(item[1]) for item in terms])
+            norm = sp.sqrt(norm)
+            # Mode labels (or, rather, indices). E.g., for x[a,V,t1] yields [a,V,t1]
+            idx = [x for y in terms for x in y[0].indices]
 
-                # Mode labels (e.g. a, b, H, V, t1, etc.)
-                idx = [x for y in terms for x in y[0].indices]
-
-                termAmplitude = amp
-                for item in symbAmp:
-                    termAmplitude *= (item[0]**item[1])
-
-                if currArg in amplitudes.keys():
-                    amplitudes[currArg]['amp'] += termAmplitude
-                else:
-                    amplitudes[currArg] = {'amp':termAmplitude,
-                                          'idx':set(idx)}
+            # Numerical (amp) and symbolic (symbAmp) amplitudes together
+            termAmplitude = amp
+            for item in symbAmp:
+                termAmplitude *= (item[0]**item[1])
+            # Check if the current argument has already been accounted for.
+            if currArg in amplitudes.keys():
+                amplitudes[currArg]['amp'] += termAmplitude
+            else:
+                amplitudes[currArg] = {'amp':termAmplitude,
+                                       'norm':norm,
+                                       'idx':set(idx)}
         self._stateAmplitudes = amplitudes
 
-    def coincidence(self):
+    def coincidence(self, full=False):
+        """
+        Post-select
+        """
         self._calculateTermAmplitudes()
         coincidenceProb = 0
         postSelectedState = 0
-        for term,values in self._stateAmplitudes.items():
-            if set(self.detectors.i).issubset(values['idx']):
-                # probability = real**2 + imag**2, otherwise sympy gets weird with phases
-                probability = sum([item**2 for item in values['amp'].as_real_imag()])
-                coincidenceProb += probability
-                # coincidenceProb += values['amp']*(values['amp'].conjugate())
-                postSelectedState += values['amp']*term
+        if full:
+            for term,values in self._stateAmplitudes.items():
+                # Renormalise
+                probability = sp.Abs(values['amp']*values['norm'])**2
+                print('> term',term)
+                print('\t amp ',values['amp'], ', exp', values['norm'])
+                print(sp.Abs(values['amp']*values['norm'])**2)
 
+                coincidenceProb += probability
+                postSelectedState += values['amp']*term
+        else:
+            for term,values in self._stateAmplitudes.items():
+                if set(self.detectors.i).issubset(values['idx']):
+                    # probability = sum([item**2 for item in values['amp'].as_real_imag()])
+                    probability = sp.Abs(values['amp']*values['norm'])**2
+                    coincidenceProb += probability
+                    postSelectedState += values['amp']*term
         self.successProbability = coincidenceProb
         self.postSelectedState = postSelectedState
 
     def _coincidence(self):
+        # Deprecated
         self.detectors.coincidence(self.state)
         self.successProbability = self.detectors.coincidenceProb
         self.postSelectedState = self.detectors.finalState
@@ -207,6 +236,7 @@ class Detectors:
         self.id = id(self)
         self.i = np.array([None]*numberOfDetectors,dtype=object)
         self.numberOfDetectors = numberOfDetectors
+        self.label = '{}fold'.format(self.numberOfDetectors)
 
     def coincidence(self,state):
         projState = 0
@@ -234,7 +264,8 @@ class Detectors:
                         # that means it belongs to a coincidence. We then take
                         # the associated amplitude and add the element to the
                         # projected state.
-                        prob += (amp*symbAmp)**2
+                        probability = sum([item**2 for item in (amp*symbAmp).as_real_imag()])
+                        prob += probability
                         projState += arg
             self.coincidenceProb = prob
             self.finalState = projState
