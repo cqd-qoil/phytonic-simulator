@@ -39,8 +39,8 @@ class Experiment:
     def addElements(self,*args):
         self.elements = {(i+1):arg for i,arg in enumerate(args)}
 
-    def addDetectors(self,detectors):
-        self.detectors = detectors
+    def addDetectors(self, *args):
+        self.detectors = [detector for detector in args]
 
     def generateState(self):
         photons = self.sources
@@ -97,11 +97,12 @@ class Experiment:
 #                     step = '---'
                     st += symb
                 st += '--'
-
-                if m in self.detectors.i:
-                    st += 'D'
-                else:
-                    st += '-'
+                for det in self.detectors:
+                    if m in det.i:
+                    # if m in self.detectors.i:
+                        st += 'D'
+                    else:
+                        st += '-'
                 self.circuit += st + '\n'
 
     def build(self):
@@ -183,7 +184,7 @@ class Experiment:
 
     def coincidence(self, full=False):
         """
-        Post-select
+        Post-select state based on detector
         """
         self._calculateTermAmplitudes()
         coincidenceProb = 0
@@ -192,19 +193,16 @@ class Experiment:
             for term,values in self._stateAmplitudes.items():
                 # Renormalise
                 probability = sp.Abs(values['amp']*values['norm'])**2
-                print('> term',term)
-                print('\t amp ',values['amp'], ', exp', values['norm'])
-                print(sp.Abs(values['amp']*values['norm'])**2)
-
                 coincidenceProb += probability
                 postSelectedState += values['amp']*term
         else:
             for term,values in self._stateAmplitudes.items():
-                if set(self.detectors.i).issubset(values['idx']):
-                    # probability = sum([item**2 for item in values['amp'].as_real_imag()])
-                    probability = sp.Abs(values['amp']*values['norm'])**2
-                    coincidenceProb += probability
-                    postSelectedState += values['amp']*term
+                for det in self.detectors:
+                    if set(det.i).issubset(values['idx']):
+                        # probability = sum([item**2 for item in values['amp'].as_real_imag()])
+                        probability = sp.Abs(values['amp']*values['norm'])**2
+                        coincidenceProb += probability
+                        postSelectedState += values['amp']*term
         self.successProbability = coincidenceProb
         self.postSelectedState = postSelectedState
 
@@ -405,7 +403,7 @@ class Element:
 
     def updateRules(self,newKeys=None,verbose=False):
         if not newKeys:
-            print('dof')
+            # print('dof')
             newKeys = self.dof
         oldKeys = list(self.rule.keys())
         self.rule = dict(zip(newKeys,self.rule.values()))
@@ -422,8 +420,9 @@ class HWP(Element):
     def __init__(self,theta,label='HWP'):
         dof = {'pol':[H,V]}
         pathmodes = 1                # modes = [H,V]
-        rule = {H: lambda modes: sp.cos(2*theta)*co(*modes[0])+sp.sin(2*theta)*co(*modes[1]),
-                V: lambda modes: sp.sin(2*theta)*co(*modes[0])-sp.cos(2*theta)*co(*modes[1])}
+        s = sp.exp(sp.I*sp.pi/2)
+        rule = {H: lambda modes: s*(sp.cos(2*theta)*co(*modes[0])+sp.sin(2*theta)*co(*modes[1])),
+                V: lambda modes: s*(sp.sin(2*theta)*co(*modes[0])-sp.cos(2*theta)*co(*modes[1]))}
         self.label = label
         Element.__init__(self,rule,dof,pathmodes)
 
@@ -529,6 +528,19 @@ class PhaseShifter(Element):
         dof = {'path':None}
         pathmodes = 1
         rule = {p1: lambda modes: sp.exp(sp.I*theta)*co(*modes[0])} # mode = a
+        self.label = label
+        Element.__init__(self,rule,dof,pathmodes)
+
+class RelPhaseShifter(Element):
+    def __init__(self,theta,mode=H,label='PSh'):
+        dof = {'pol':[H,V]}
+        pathmodes = 1
+        if mode==H:
+            rule = {H: lambda modes: sp.exp(sp.I*theta)*co(*modes[0]),
+                    V: lambda modes: co(*modes[1])}
+        elif mode==V:
+            rule = {H: lambda modes: co(*modes[0]),
+                    V: lambda modes: sp.exp(sp.I*theta)*co(*modes[1])}
         self.label = label
         Element.__init__(self,rule,dof,pathmodes)
 
