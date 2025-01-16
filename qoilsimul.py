@@ -5,10 +5,17 @@ from operator import mul
 from functools import reduce
 import random
 from itertools import product,chain
+from collections.abc import Sequence
 
 H,V = sp.symbols('H V', cls=sp.IndexedBase)
-p1, p2 = sp.symbols('p1 p2', cls=sp.IndexedBase)
-# sp.symbols('p1:20',cls_=sp.IndexedBase)
+# p1, p2 = sp.symbols('p1 p2', cls=sp.IndexedBase)
+sp.var('p1:11', cls=sp.IndexedBase)
+
+def toSymbolic(a):
+    if isinstance(a,str):
+        return sp.var(a,cls=sp.IndexedBase)
+    elif isinstance(a,Sequence):
+        return [toSymbolic(x) for x in a]
 
 def co(*args):
     return sp.symbols('x', cls=sp.IndexedBase)[args]
@@ -136,9 +143,13 @@ class Experiment:
         self.summary = resultsDict
 
     def _calculateTermAmplitudes(self):
+        sum_vac = lambda xx: sum([item[0]*item[1] for item in xx])
+
         amplitudes = {}
+        vacuum = (0,1)
         # Iterate over each expression in the state
         for arg in self.state.expand().as_ordered_terms():
+
             # amp: numerical amplitude
             # factors: list of symbolic terms (and their exponent coefficient)
             amp, factors = sp.factor_list(arg)
@@ -146,9 +157,13 @@ class Experiment:
             # check all symbolic elements and check for 'x' (reserved for creation ops.).
             # E.g.: mask for [(c, 1), (x[a,H],2), (x[b,V],2)] is [False,True,True]
             mask = [sp.Symbol('x') in i[0].free_symbols for i in factors]
+            # Check for vacuum
+            if len(mask)==1 and not mask[0]:
+                vacuum = sum_vac([vacuum, *factors])
             # Filter out symbolic terms that are non-creation ops., and move on to next
             # expression if there's no creation operators (e.g. if there's somehow a constant)
-            terms = [f for f,m in zip(factors,mask) if m]
+            terms = [f for f,m in zip(factors, mask) if m]
+
             if not len(terms):
                 # If no creation ops.
                 continue
@@ -180,12 +195,11 @@ class Experiment:
                 amplitudes[currArg] = {'amp':termAmplitude,
                                        'norm':norm,
                                        'idx':set(idx)}
+        self._vacuumAmp = vacuum
         self._stateAmplitudes = amplitudes
 
-    def coincidence(self, full=False):
-        """
-        Post-select state based on detector
-        """
+    def _postSelect(self,detector_list,full=False):
+        detector_list = to_symbolic(detector_list)
         self._calculateTermAmplitudes()
         coincidenceProb = 0
         postSelectedState = 0
@@ -197,8 +211,32 @@ class Experiment:
                 postSelectedState += values['amp']*term
         else:
             for term,values in self._stateAmplitudes.items():
+                for det in detector_list:
+                    if set(det).issubset(values['idx']):
+                        # probability = sum([item**2 for item in values['amp'].as_real_imag()])
+                        probability = sp.Abs(values['amp']*values['norm'])**2
+                        coincidenceProb += probability
+                        postSelectedState += values['amp']*term
+
+    def coincidence(self, full=False):
+        """
+        Post-select state based on detector
+        """
+        self._calculateTermAmplitudes()
+        coincidenceProb = 0
+        postSelectedState = 0
+        self._postSelectedAmplitudes = {}
+        if full:
+            for term,values in self._stateAmplitudes.items():
+                # Renormalise
+                probability = sp.Abs(values['amp']*values['norm'])**2
+                coincidenceProb += probability
+                postSelectedState += values['amp']*term
+        else:
+            for term,values in self._stateAmplitudes.items():
                 for det in self.detectors:
                     if set(det.i).issubset(values['idx']):
+                        self._postSelectedAmplitudes[term] = values
                         # probability = sum([item**2 for item in values['amp'].as_real_imag()])
                         probability = sp.Abs(values['amp']*values['norm'])**2
                         coincidenceProb += probability
@@ -497,7 +535,7 @@ class PPBSV(Element):
         self.label = label
         Element.__init__(self,rule,dof,pathmodes)
 
-class BD_full(Element):
+class BD(Element):
     def __init__(self, pathmodes=1, walking_pol=H,label='BD'):
         dof = {'path':None, 'pol':[H, V]}
         # Since a single BD can be used for many different paths (and it can always "increase" the total number of path modes), it needs some special consideration.
