@@ -23,13 +23,12 @@ To run the simulator, you basically only need:
 - `numpy`, for everything else
 
 ## Usage
-See the linked notebooks for examples. Below is a simplified guide to simulating your own experiments.
+See the linked notebooks (in particular, the **quantum Fourier transform** notebook!) for examples. Below is a simplified guide to simulating your own experiments.
 
 ### 1. Initialise experiment
 The first step is to initialise an experiment, which will be the main object in the simulator. We will add photon states, optical elements, and detectors to the `Experiment()` object.
 
 ```python
-import sympy as sp
 from qoilsimul import *
 
 experiment = Experiment()
@@ -154,7 +153,7 @@ experiment.addDetectors(detectors) # Add
 
 ### Optional: preview the circuit
 
-At this point, you can generate a minimalistic ASCII representation of the circuit with `experiment.generateCircuit()`, giving you an easy to read summary of the experiment.
+At this point, you can generate a minimalisti ASCII representation of the circuit with `experiment.generateCircuit()`, giving you an easy to read summary of the experiment.
 To display it, simply print it into the terminal.
 
 ```python
