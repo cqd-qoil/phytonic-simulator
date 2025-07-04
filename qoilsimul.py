@@ -183,6 +183,7 @@ class Experiment:
             norm = sp.sqrt(norm)
             # Mode labels (or, rather, indices). E.g., for x[a,V,t1] yields [a,V,t1]
             idx = [x for y in terms for x in y[0].indices]
+            mults = [item[-1] for item in factors]
 
             # Numerical (amp) and symbolic (symbAmp) amplitudes together
             termAmplitude = amp
@@ -194,7 +195,8 @@ class Experiment:
             else:
                 amplitudes[currArg] = {'amp':termAmplitude,
                                        'norm':norm,
-                                       'idx':set(idx)}
+                                       'idx':idx, #set(idx),
+                                       'mult':mults}
         self._vacuumAmp = vacuum
         self._stateAmplitudes = amplitudes
 
@@ -232,15 +234,32 @@ class Experiment:
                 probability = sp.Abs(values['amp']*values['norm'])**2
                 coincidenceProb += probability
                 postSelectedState += values['amp']*term
+        # else:
+            # for term,values in self._stateAmplitudes.items():
+            #     for det in self.detectors:
+            #         if set(det.i).issubset(values['idx']):
+            #             self._postSelectedAmplitudes[term] = values
+            #             # probability = sum([item**2 for item in values['amp'].as_real_imag()])
+            #             probability = sp.Abs(values['amp']*values['norm'])**2
+            #             coincidenceProb += probability
+            #             postSelectedState += values['amp']*term
         else:
             for term,values in self._stateAmplitudes.items():
                 for det in self.detectors:
                     if set(det.i).issubset(values['idx']):
-                        self._postSelectedAmplitudes[term] = values
-                        # probability = sum([item**2 for item in values['amp'].as_real_imag()])
-                        probability = sp.Abs(values['amp']*values['norm'])**2
-                        coincidenceProb += probability
-                        postSelectedState += values['amp']*term
+                        nclicks = dict(zip(values['idx'], values['mult']))
+                        if det.bucket:
+                            self._postSelectedAmplitudes[term] = values
+                            probability = sp.Abs(values['amp']*values['norm'])**2
+                            coincidenceProb += probability
+                            postSelectedState += values['amp']*term
+                        else:
+                            for d in det.i:
+                                if (nclicks[d] == det.pnr[d]):
+                                    self._postSelectedAmplitudes[term] = values
+                                    probability = sp.Abs(values['amp']*values['norm'])**2
+                                    coincidenceProb += probability
+                                    postSelectedState += values['amp']*term
         self.successProbability = coincidenceProb
         self.postSelectedState = postSelectedState
 
@@ -270,10 +289,31 @@ class Photon:
 class Detectors:
     def __init__(self,numberOfDetectors):
         self.id = id(self)
-        self.i = np.array([None]*numberOfDetectors,dtype=object)
+        # self.i = np.array([None]*numberOfDetectors,dtype=object)
+        self._i = np.array([None]*numberOfDetectors,dtype=object)
         self.numberOfDetectors = numberOfDetectors
         self.label = '{}fold'.format(self.numberOfDetectors)
+        self.bucket = True
+        self._pnr = {k:1 for k in self._i}
 
+    @property
+    def i(self):
+        return self._i
+    @i.setter
+    def i(self,newValue):
+        self._i = newValue
+        self._pnr = {k:1 for k in self._i}
+
+    @property
+    def pnr(self):
+        return self._pnr
+    @pnr.setter
+    def pnr(self,newValue=None):
+        self.bucket = False
+        self._pnr = {k:v for k,v in zip(self.i, newValue)}
+
+
+        
     def coincidence(self,state):
         projState = 0
         if not any(self.i):
